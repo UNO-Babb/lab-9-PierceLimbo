@@ -1,125 +1,129 @@
-# This app will encode or decode text messages in an image file.
-# The app will use RGB channels so only PNG files will be accepted.
-# This technique will focus on Least Signifigant Bit (LSB) encoding.
+#Lab 9
+#Pierce Limbo
+#11/4/2025
 
 from PIL import Image
 import os
 
 def encode(img, msg):
-  #TODO: You need to convert the RGB to binary
-  #Then we will adjust the pixels to encode the message binary value into the last bit.
-  #Each letter will take three pixels, with a spare pixel unchanged.
-  pixels = img.load() # pixesls is the pixel map, 2-d list of data
-  width, height = img.size
-  letterSpot = 0
-  pixel = 0
-  letterBinary = ""
-  msgLength = len(msg)
-  red, green, blue = pixels[0, 0]
-  pixels[0,0] = (msgLength, green, blue)
 
-  for i in range(msgLength * 3):
-    x = i % width
-    y = i // width
+    if len(msg) > 255:
+        raise ValueError("Message too long for 1-byte header. Max 255 characters.")
 
-    red, green, blue = pixels[x, y]
-    redBinary = numberToBinary(red)
-    greenBinary = numberToBinary(green)
-    blueBinary = numberToBinary(blue)
+    pixels = img.load()  
+    width, height = img.size
+    total_pixels = width * height
 
-    if pixel % 3 == 0:
-      letterBinary = numberToBinary(ord(msg[letterSpot]))
-      #ignore the red on the first pixel of each letter.
-      greenBinary = greenBinary[0:7] + letterBinary[0]
-      blueBinary = blueBinary[0:7] + letterBinary[1]
-    elif pixel % 3 == 1:
-      redBinary = redBinary[0:7] + letterBinary[2]
-      greenBinary = greenBinary[0:7] + letterBinary[3]
-      blueBinary = blueBinary[0:7] + letterBinary[4]
-    else:
-      redBinary = redBinary[0:7] + letterBinary[5]
-      greenBinary = greenBinary[0:7] + letterBinary[6]
-      blueBinary = blueBinary[0:7] + letterBinary[7]
+    required_pixels = 1 + 3 * len(msg)
+    if required_pixels > total_pixels:
+        raise ValueError(f"Image too small. Need {required_pixels} pixels, have {total_pixels}.")
 
-      letterSpot = letterSpot + 1
+    r, g, b = pixels[0, 0]
+    pixels[0, 0] = (len(msg), g, b)  
 
-    red = binaryToNumber(redBinary)
-    blue = binaryToNumber(blueBinary)
-    green = binaryToNumber(greenBinary)
+    letterSpot = 0       
+    pixel_index = 1       
+    letterBinary = ""
 
-    pixels[x,y] = (red, green, blue)
-    pixel = pixel + 1
+    for i in range(len(msg) * 3):
+        idx = pixel_index
+        x = idx % width
+        y = idx // width
 
-  #Save the file that has now been encoded.
-  img.save("secretImg.png", 'png')
+        red, green, blue = pixels[x, y]
+        redBinary = numberToBinary(red)
+        greenBinary = numberToBinary(green)
+        blueBinary = numberToBinary(blue)
+
+
+        if i % 3 == 0:
+            letterBinary = numberToBinary(ord(msg[letterSpot]))
+
+            greenBinary = greenBinary[:7] + letterBinary[0]
+            blueBinary  = blueBinary[:7]  + letterBinary[1]
+        elif i % 3 == 1:
+            redBinary   = redBinary[:7]   + letterBinary[2]
+            greenBinary = greenBinary[:7] + letterBinary[3]
+            blueBinary  = blueBinary[:7]  + letterBinary[4]
+        else:
+            redBinary   = redBinary[:7]   + letterBinary[5]
+            greenBinary = greenBinary[:7] + letterBinary[6]
+            blueBinary  = blueBinary[:7]  + letterBinary[7]
+            letterSpot += 1  
+          
+        red   = binaryToNumber(redBinary)
+        green = binaryToNumber(greenBinary)
+        blue  = binaryToNumber(blueBinary)
+        pixels[x, y] = (red, green, blue)
+
+        pixel_index += 1  
+
+    img.save("secretImg.png", "PNG")
+
 
 def decode(img):
-  """Takes the image file and reads the least significant bit from the RGBA channels.
-  Converts that binary to decimal to ASCII."""
-  msg = ""
+    msg = ""
+    pixels = img.load()
+    width, height = img.size
 
-  pixels = img.load() #Pixels is the pixel map, a 2-dimensional list of pixel data
-  red,green,blue = pixels[0,0]
-  msgLength = red
-  width, height = img.size
-  letterSpot = 0
-  pixel = 0
-  letterBinary = ""
-  x = 0
-  y = 0
-  while len(msg) < msgLength:
-    red,green,blue = pixels[x,y]
-    redBinary = numberToBinary(red)
-    greenBinary = numberToBinary(green)
-    blueBinary = numberToBinary(blue)
+    red, green, blue = pixels[0, 0]
+    msgLength = red 
 
-    if pixel % 3 == 0:
-      letterBinary = greenBinary[7] + blueBinary[7]
+    letterBinary = ""
+    pixel_index = 1  
 
-    elif pixel % 3 == 1:
-      letterBinary = letterBinary + redBinary[7] + greenBinary[7] + blueBinary[7]
+    while len(msg) < msgLength:
+        x = pixel_index % width
+        y = pixel_index // width
 
-    else:
-      letterBinary = letterBinary + redBinary[7] + greenBinary[7] + blueBinary[7]
-      letterAscii = binaryToNumber(letterBinary)
-      letter = chr(letterAscii)
-      msg = msg + chr(letterAscii)
+        r, g, b = pixels[x, y]
+        rB = numberToBinary(r)
+        gB = numberToBinary(g)
+        bB = numberToBinary(b)
 
-    pixel = pixel + 1
-    x = pixel % width
-    y = pixel // width
+        mod = (pixel_index - 1) % 3 
+        if mod == 0:
+            letterBinary = gB[7] + bB[7]
+        elif mod == 1:
+            letterBinary += rB[7] + gB[7] + bB[7]
+        else:
+            letterBinary += rB[7] + gB[7] + bB[7]
+            letterAscii = binaryToNumber(letterBinary)
+            msg += chr(letterAscii)
+            letterBinary = "" 
 
-  return msg
+        pixel_index += 1
 
-#Helper functions
+    return msg
+
+
+# ---------- Helper functions ----------
 
 def numberToBinary(num):
-  """Takes a base10 number and converts to a binary string with 8 bits"""
-  binary = ""
-  #Convert from decimal to binary
+    if not (0 <= num <= 255):
+        raise ValueError("numberToBinary expects a value in 0..255")
+    bits = []
+    n = num
+    for _ in range(8):
+        bits.append(str(n & 1))
+        n >>= 1
+    bits.reverse()
+    return "".join(bits)
 
+def binaryToNumber(bin_str):
+    total = 0
+    for c in bin_str:
+        total = (total << 1) | (1 if c == '1' else 0)
+    return total
 
-  return binary
-
-def binaryToNumber(bin):
-  """Takes a string binary value and converts it to a base10 integer."""
-  decimal = 0
-
-
-  return decimal
 
 def main():
-  #Ask user if they want to encode/decode
-  myImg = Image.open('pki.png')
-  myMsg = "This is a secret message I will hide in an image."
-  encode(myImg, myMsg)
-  myImg.close()
+    myImg = Image.open('pki.png').convert('RGB')
+    myMsg = "This is a secret message I will hide in an image."
+    encode(myImg, myMsg)
+    myImg.close()
 
-  """
-  yourImg = Image.open('secretImg.png')
-  msg = decode(yourImg)
-  print(msg)
-  """
-    
+
+
 if __name__ == '__main__':
-  main()
+    main()
